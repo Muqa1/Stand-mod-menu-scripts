@@ -85,7 +85,7 @@ end
 menu.toggle_loop(menuroot, "Enable ESP", {"muqaesp"}, "Enables the ESP", function ()
     local playerlist = players.list(components.localplayer, true, true)
     local lPlayer = PLAYER.PLAYER_PED_ID()
-    for i = 0, #playerlist do
+    for i = 1, #playerlist do
 
         local targetped = PLAYER.GET_PLAYER_PED(playerlist[i])
         local pid = NETWORK.NETWORK_GET_PLAYER_INDEX_FROM_PED(targetped)
