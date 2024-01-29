@@ -5,26 +5,32 @@
     credits to https://github.com/Keramis/Cat_ESP_STANDAPI and https://gitlab.com/undefinedscripts/undefined-for-stand/-/blob/main/Undefined.lua for some functions
 
 ]]
+local __luapack_arg__ = arg
 
 util.require_natives(1651208000)
 util.keep_running()
 local menuroot = menu.my_root()
 
 --== tables ==--
-local components = {
+local components = { -- name is components but its actually my overall cfg
+    localplayer = false,
     line = false,
     box = true,
     txtscale = 0.4,
     name = true,
+    tags = true,
     healthbar = true,
     healtText = true,
     weaponName = true,
+    distance = true,
+    maxDistance = 6000;
 }
 local colors = {
     box = {r = 1.0, g = 1.0, b = 1.0, a = 1.0},
     line = {r = 1.0, g = 1.0, b = 1.0, a = 0.2},
     name = {r = 0.0, g = 1.0, b = 1.0, a = 1.0},
     weapon = {r = 1.0, g = 1.0, b = 0.0, a = 1.0},
+    distance = {r = 0.5, g = 0.5, b = 0.5, a = 1.0},
 }
 
 local bones = {
@@ -77,15 +83,18 @@ end
 
 --== script loop ==--
 menu.toggle_loop(menuroot, "Enable ESP", {"muqaesp"}, "Enables the ESP", function ()
-    local playerlist = players.list(false, true, true)
+    local playerlist = players.list(components.localplayer, true, true)
     local lPlayer = PLAYER.PLAYER_PED_ID()
-    for i = 1, #playerlist do
+    for i = 0, #playerlist do
 
         local targetped = PLAYER.GET_PLAYER_PED(playerlist[i])
+        local pid = NETWORK.NETWORK_GET_PLAYER_INDEX_FROM_PED(targetped)
+
+        local dist = math.floor(v3.distance(ENTITY.GET_ENTITY_COORDS(lPlayer), ENTITY.GET_ENTITY_COORDS(targetped)))
 
         local health = ENTITY.GET_ENTITY_HEALTH(targetped)-100
 
-        if health <= 0 then 
+        if (health <= 0) or (dist > components.maxDistance) then
             goto continue
         end
 
@@ -140,14 +149,34 @@ menu.toggle_loop(menuroot, "Enable ESP", {"muqaesp"}, "Enables the ESP", functio
                 directx.draw_text(x-0.006, y, math.floor((health / maxhealth) * 100), ALIGN_TOP_RIGHT, components.txtscale, {r = 0.0, g = 1.0, b = 0.0, a = 1.0}, true)
             end
 
+            local top_offset = 0.0
+
             if components.name then 
-                directx.draw_text(x+w*0.5, y - 0.002, NETWORK.NETWORK_PLAYER_GET_NAME(playerlist[i]), ALIGN_BOTTOM_CENTRE, components.txtscale, colors.name, true)
+                local name = NETWORK.NETWORK_PLAYER_GET_NAME(playerlist[i])
+                directx.draw_text(x+w*0.5, y - 0.002, name, ALIGN_BOTTOM_CENTRE, components.txtscale, colors.name, true)
+                local width, height = directx.get_text_size(name, components.txtscale)
+                top_offset = top_offset + height
             end
+
+            if components.tags then 
+                if players.exists(pid) then 
+                    directx.draw_text(x+w*0.5, y-top_offset - 0.002, players.get_tags_string(pid), ALIGN_BOTTOM_CENTRE, components.txtscale, colors.name, true)
+                end
+            end
+
+            local bottom_offset = 0.0
 
             if components.weaponName then 
                 local name = getWeaponName(targetped)
-                if not name then name = "" end
-                directx.draw_text(x+w*0.5, y+h+0.002, name, ALIGN_TOP_CENTRE, components.txtscale, colors.weapon, true)
+                if name then
+                    directx.draw_text(x+w*0.5, y+h+0.002, name, ALIGN_TOP_CENTRE, components.txtscale, colors.weapon, true)
+                    local width, height = directx.get_text_size(name, components.txtscale)
+                    bottom_offset = bottom_offset + height
+                end
+            end
+
+            if components.distance then 
+                directx.draw_text(x+w*0.5, y+h+bottom_offset+0.002, dist.. "m", ALIGN_TOP_CENTRE, components.txtscale, colors.distance, true)
             end
 
         end
@@ -179,15 +208,31 @@ menu.toggle(espComponents, "Name ESP", {"muqaespname"}, "Draws the players name.
     components.name = toggle
 end, components.name)
 
+menu.toggle(espComponents, "Show Tags", {"muqaesptags"}, "Draws the players tags above their name.", function (toggle)
+    components.tags = toggle
+end, components.tags)
+
 menu.toggle(espComponents, "Weapon ESP", {"muqaespname"}, "Draws the players current weapon name.", function (toggle)
     components.weaponName = toggle
 end, components.weaponName)
+
+menu.toggle(espComponents, "Distance ESP", {"muqaespdist"}, "Draws the players distance from you under the weapon name.", function (toggle)
+    components.distance = toggle
+end, components.distance)
 ------------------------
 local espSetts = menu.list(menuroot, "ESP Settings", {"muqaespsettings"}, "Change the esp settings (mostly colors).")
 
 local function RGB(x)
-    return 255 * x
+    return math.floor(255 * x)
 end
+
+menu.toggle(espSetts, "Draw Localplayer", {"muqaespbox"}, "Should the localplayer aka you be drawn aswell.", function (toggle)
+    components.localplayer = toggle
+end, components.localplayer)
+
+menu.slider(espSetts, "Max Distance", {"muqaespboxmaxdst"}, "The maximum distance at which the player will be rendered.", 0, 10000, components.maxDistance, 1, function(value)
+    components.maxDistance = value
+end)
 
 menu.slider(espSetts, "Text Scale", {"muqaespboxtxtscale"}, "Change the ESP text size.", 0, 100, components.txtscale * 100, 1, function(value)
     components.txtscale = (value / 100)
@@ -247,5 +292,19 @@ menu.slider(weaponColor, "B", {"muqaespweaponcolorb"}, "", 0, 255, RGB(colors.we
 end)
 menu.slider(weaponColor, "A", {"muqaespweaponcolora"}, "", 0, 255, RGB(colors.weapon.a), 1, function(value)
     colors.weapon.a = (value / 255)
+end)
+
+local distColor = menu.list(espSetts, "Distance Color", {"muqaespsettingsdist"}, "Change the distance color.")
+menu.slider(distColor, "R", {"muqaespdistcolorr"}, "", 0, 255, RGB(colors.distance.r), 1, function(value)
+    colors.distance.r = (value / 255)
+end)
+menu.slider(distColor, "G", {"muqaespdistcolorg"}, "", 0, 255, RGB(colors.distance.g), 1, function(value)
+    colors.distance.g = (value / 255)
+end)
+menu.slider(distColor, "B", {"muqaespdistcolorb"}, "", 0, 255, RGB(colors.distance.b), 1, function(value)
+    colors.distance.b = (value / 255)
+end)
+menu.slider(distColor, "A", {"muqaespdistcolora"}, "", 0, 255, RGB(colors.distance.a), 1, function(value)
+    colors.distance.a = (value / 255)
 end)
 --== menu elements ==--
